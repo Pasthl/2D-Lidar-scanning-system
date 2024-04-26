@@ -22,5 +22,3 @@ void GetData(sl::ILidarDriver* drv, LidarInfo& Result, HalconCpp::HWindow& windo
 void DealImage(HalconCpp::HObject  ho_Image, LidarInfo& Result);
 
 void CalDistance(HalconCpp::HObject  ho_Image, LidarInfo& Result);
-
-void Caldistance1(HalconCpp::HObject  ho_Image, LidarInfo& Result);

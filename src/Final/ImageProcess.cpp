@@ -98,19 +98,19 @@ void GetData(sl::ILidarDriver* drv, LidarInfo& Result, HalconCpp::HWindow& windo
                 // 若坐标有效，绘制到hoimage上，点为黑色
                 HalconCpp::SetGrayval(ho_Lidar_image, int(point(0)), int(point(1)), 0); //旋转之后坐标系坐标
 
-                std::string name = ("Lidar_image." + std::to_string(timesss) + ".bmp");
-                HalconCpp::HTuple filename = (HalconCpp::HTuple)(name.c_str());
-                HalconCpp::WriteImage(ho_Lidar_image, "bmp", 0, filename);
+                //std::string name = ("Lidar_image." + std::to_string(timesss) + ".bmp");
+                //HalconCpp::HTuple filename = (HalconCpp::HTuple)(name.c_str());
+                //HalconCpp::WriteImage(ho_Lidar_image, "bmp", 0, filename);
 
                 // 在Halcon窗口中显示图像
                 window.DispObj(ho_Lidar_image); // 在窗口中显示当前帧图像
-                // HalconCpp::WriteImage(ho_Lidar_image, "bmp", 0, "Lidar_image.bmp"); // 此处只保存了最后一帧的扫描图像
+                HalconCpp::WriteImage(ho_Lidar_image, "bmp", 0, "Lidar_image.bmp"); // 此处只保存了最后一帧的扫描图像
             }
         }
 
     }
     DealImage(ho_Lidar_image, Result);//处理图像信息
-    Caldistance1(ho_Lidar_image, Result);
+    CalDistance(ho_Lidar_image, Result);
     timesss++;
     //图像重置
     ori_x.clear();
@@ -196,9 +196,7 @@ void DealImage(HalconCpp::HObject  ho_Image, LidarInfo& Result)
     }
     if (hv_angle_min_y.Length() > 0)
     {
-        Result.distance = float(hv_DistanceMin * 20);//将最终结果放到结构体中,1像素=20mm
-        Result.theta = float(hv_angle_min_y[0]);
-
+        Result.distance = double(hv_DistanceMin * 20);//将最终结果放到结构体中,1像素=20mm
     }
 
 }
@@ -206,191 +204,169 @@ void DealImage(HalconCpp::HObject  ho_Image, LidarInfo& Result)
 void CalDistance(HalconCpp::HObject  ho_Image, LidarInfo& Result)
 {
     // Local iconic variables
-    HalconCpp::HObject  ho_Rectangle1, ho_ImageReducedLeft;
-    HalconCpp::HObject  ho_Rectangle2, ho_ImageReducedRight, ho_EdgesLeft;
-    HalconCpp::HObject  ho_ContoursLeft, ho_LineLeft, ho_EdgesRight, ho_ContoursRight;
-    HalconCpp::HObject  ho_LineRight;
-
-    // Local control variables
-    HalconCpp::HTuple  hv_RowBeginLeft, hv_ColBeginLeft, hv_RowEndLeft;
-    HalconCpp::HTuple  hv_ColEndLeft, hv_NrLeft, hv_NcLeft, hv_DistLeft;
-    HalconCpp::HTuple  hv_RowBeginRight, hv_ColBeginRight, hv_RowEndRight;
-    HalconCpp::HTuple  hv_ColEndRight, hv_NrRight, hv_NcRight, hv_DistRight;
-    HalconCpp::HTuple  hv_x_radar, hv_y_radar, hv_MinDistanceLeft, hv_MinDistanceRight;
-    HalconCpp::HTuple  hv_DistancesLeft, hv_DistancesRight;
-
-    // 设置左侧ROI
-    GenRectangle1(&ho_Rectangle1, 384, 24, 480, 430);
-    ReduceDomain(ho_Image, ho_Rectangle1, &ho_ImageReducedLeft);
-
-    // 设置右侧ROI
-    GenRectangle1(&ho_Rectangle2, 384, 560, 510, 920);
-    ReduceDomain(ho_Image, ho_Rectangle2, &ho_ImageReducedRight);
-
-    // 对左侧区域进行处理
-    EdgesSubPix(ho_ImageReducedLeft, &ho_EdgesLeft, "lanser2", 0.5, 20, 40); // 边缘检测
-    GenPolygonsXld(ho_EdgesLeft, &ho_ContoursLeft, "ramer", 2); // 从边缘生成多边形XLD轮廓
-    SplitContoursXld(ho_ContoursLeft, &ho_LineLeft, "polygon", 1, 5); // 将多边形XLD轮廓拆分成单独轮廓片段
-
-    // 对右侧区域进行处理
-    EdgesSubPix(ho_ImageReducedRight, &ho_EdgesRight, "lanser2", 0.5, 20, 40);
-    GenPolygonsXld(ho_EdgesRight, &ho_ContoursRight, "ramer", 2);
-    SplitContoursXld(ho_ContoursRight, &ho_LineRight, "polygon", 1, 5);
-
-    // 拟合直线
-    FitLineContourXld(ho_LineLeft, "tukey", -1, 0, 5, 2, &hv_RowBeginLeft, &hv_ColBeginLeft,
-        &hv_RowEndLeft, &hv_ColEndLeft, &hv_NrLeft, &hv_NcLeft, &hv_DistLeft);
-    FitLineContourXld(ho_LineRight, "tukey", -1, 0, 5, 2, &hv_RowBeginRight, &hv_ColBeginRight,
-        &hv_RowEndRight, &hv_ColEndRight, &hv_NrRight, &hv_NcRight, &hv_DistRight);
-
-    // 定义雷达中心和最小距离
-    hv_x_radar = 500;
-    hv_y_radar = 500;
-    hv_MinDistanceLeft = 0;
-    hv_MinDistanceRight = 0;
-
-    // 初始化距离数组为一个较大的值，以避免空数组（检测不到直线）的情况
-    hv_DistancesLeft = HalconCpp::HTuple(9999);
-    hv_DistancesRight = HalconCpp::HTuple(9999);
-
-    // 计算点到左侧线的距离
-    DistancePl(hv_x_radar, hv_y_radar, hv_RowBeginLeft, hv_ColBeginLeft, hv_RowEndLeft,
-        hv_ColEndLeft, &hv_DistancesLeft);
-    
-
-    // 计算点到右侧线的距离
-    DistancePl(hv_x_radar, hv_y_radar, hv_RowBeginRight, hv_ColBeginRight, hv_RowEndRight,
-        hv_ColEndRight, &hv_DistancesRight);
-    // TupleMin(hv_DistancesRight, &hv_MinDistanceRight);
-
-    // 计算最小距离前，移除初始值
-    hv_DistancesLeft = hv_DistancesLeft.TupleRemove(0);
-    hv_DistancesRight = hv_DistancesRight.TupleRemove(0);
-
-    // 确保至少有一个元素后再计算最小值
-    if (hv_DistancesLeft.Length() > 0) {
-        TupleMin(hv_DistancesLeft, &hv_MinDistanceLeft);
-    }
-    else {
-        // 没有检测到直线，可以设置为一个特定的错误值或者保持9999
-        hv_MinDistanceLeft = HalconCpp::HTuple(9999);
-    }
-
-    if (hv_DistancesRight.Length() > 0) {
-        TupleMin(hv_DistancesRight, &hv_MinDistanceRight);
-    }
-    else {
-        // 没有检测到直线，可以设置为一个特定的错误值或者保持9999
-        hv_MinDistanceRight = HalconCpp::HTuple(9999);
-    }
-
-    Result.distanceLeft = float(hv_MinDistanceLeft * 20);
-    Result.distanceRight = float(hv_MinDistanceRight * 20);
-}
-
-void Caldistance1(HalconCpp::HObject  ho_Image, LidarInfo& Result)
-{
-
-    // Local iconic variables
     HalconCpp::HObject  ho_Region, ho_Cross, ho_Rectangle1;
-    HalconCpp::HObject  ho_ImageReducedLeft, ho_RegionDilatedLeft, ho_ConnectedRegionsLeft;
-    HalconCpp::HObject  ho_SelectedRegionsLeft, ho_Rectangle2, ho_ImageReducedRight;
+    HalconCpp::HObject  ho_ImageReducedLeft, ho_Rectangle2, ho_ImageReducedRight;
+    HalconCpp::HObject  ho_RegionDilatedLeft, ho_ConnectedRegionsLeft, ho_SelectedRegionsLeft;
     HalconCpp::HObject  ho_RegionDilatedRight, ho_ConnectedRegionsRight;
-    HalconCpp::HObject  ho_SelectedRegionsRight, ho_ContoursLeft, ho_SmoothContoursLeft;
-    HalconCpp::HObject  ho_PolygonsLeft, ho_LineLeft, ho_ContoursRight;
-    HalconCpp::HObject  ho_SmoothContoursRight, ho_PolygonsRight, ho_LineRight;
+    HalconCpp::HObject  ho_SelectedRegionsRight, ho_SkeletonLeft, ho_ContoursLeft;
+    HalconCpp::HObject  ho_ContoursSplitLeft, ho_FinalSelectedXLDLeft, ho_FinalLineRegionLeft;
+    HalconCpp::HObject  ho_LineLeft, ho_SkeletonRight, ho_ContoursRight;
+    HalconCpp::HObject  ho_ContoursSplitRight, ho_FinalSelectedXLDRight;
+    HalconCpp::HObject  ho_FinalLineRegionRight, ho_LineRight;
 
     // Local control variables
     HalconCpp::HTuple  hv_Width, hv_Height, hv_WindowHandle;
-    HalconCpp::HTuple  hv_RowBeginLeft, hv_ColBeginLeft, hv_RowEndLeft;
-    HalconCpp::HTuple  hv_ColEndLeft, hv_NrLeft, hv_NcLeft, hv_DistLeft;
-    HalconCpp::HTuple  hv_RowBeginRight, hv_ColBeginRight, hv_RowEndRight;
-    HalconCpp::HTuple  hv_ColEndRight, hv_NrRight, hv_NcRight, hv_DistRight;
-    HalconCpp::HTuple  hv_x_radar, hv_y_radar, hv_MinDistanceLeft, hv_MinDistanceRight;
-    HalconCpp::HTuple  hv_DistancesLeft, hv_DistancesRight;
+    HalconCpp::HTuple  hv_Number, hv_xldLengthLeft, hv_XLDNumber, hv_Row;
+    HalconCpp::HTuple  hv_Column, hv_PhiLeft, hv_Length1, hv_Length2, hv_LineRowLeft1;
+    HalconCpp::HTuple  hv_LineColLeft1, hv_LineRowLeft2, hv_LineColLeft2;
+    HalconCpp::HTuple  hv_DegLeft, hv_xldLengthRight, hv_PhiRight, hv_LineRowRight1;
+    HalconCpp::HTuple  hv_LineColRight1, hv_LineRowRight2, hv_LineColRight2;
+    HalconCpp::HTuple  hv_DegRight, hv_DistanceMin, hv_DistanceMax, hv_DistanceCenterToLeft;
+    HalconCpp::HTuple  hv_DistanceCenterToRight;
 
 
-    // 选取灰度值为0，即黑色的点
+    //获取图片的大小
+    GetImageSize(ho_Image, &hv_Width, &hv_Height);
+
+    //定义ROI和阈值处理
     Threshold(ho_Image, &ho_Region, 0, 0);
+    //对图像应用阈值操作，选出灰度值在128到255之间的像素，创建一个二值图像区域。
 
-    // 对左侧进行处理
-    GenRectangle1(&ho_Rectangle1, 420, 40, 500, 480); // 左侧ROI
-    ReduceDomain(ho_Region, ho_Rectangle1, &ho_ImageReducedLeft); // 限制处理区域到ROI内
-    DilationCircle(ho_ImageReducedLeft, &ho_RegionDilatedLeft, 2); // 膨胀
-    Connection(ho_RegionDilatedLeft, &ho_ConnectedRegionsLeft); // 连通
-    SelectShape(ho_ConnectedRegionsLeft, &ho_SelectedRegionsLeft, "area", "and", 50,
-        99999); // 选取像素值在50以上的区域
+    GenCrossContourXld(&ho_Cross, 500, 500, 6, 0.785398);
 
-    // 对右侧进行处理
-    GenRectangle1(&ho_Rectangle2, 384, 520, 500, 920);  
+    GenRectangle1(&ho_Rectangle1, 420, 40, 480, 480);
+    ReduceDomain(ho_Region, ho_Rectangle1, &ho_ImageReducedLeft);
 
+    GenRectangle1(&ho_Rectangle2, 420, 520, 480, 920);
     ReduceDomain(ho_Region, ho_Rectangle2, &ho_ImageReducedRight);
+
+    DilationCircle(ho_ImageReducedLeft, &ho_RegionDilatedLeft, 2);
+    Connection(ho_RegionDilatedLeft, &ho_ConnectedRegionsLeft);
+    SelectShape(ho_ConnectedRegionsLeft, &ho_SelectedRegionsLeft, "area", "and", 10,
+        99999);
+
     DilationCircle(ho_ImageReducedRight, &ho_RegionDilatedRight, 2);
     Connection(ho_RegionDilatedRight, &ho_ConnectedRegionsRight);
     SelectShape(ho_ConnectedRegionsRight, &ho_SelectedRegionsRight, "area", "and",
-        50, 99999);
+        10, 99999);
 
-    // 处理左侧区域
-    GenContourRegionXld(ho_SelectedRegionsLeft, &ho_ContoursLeft, "border"); // 生成区域XLD轮廓
-    SmoothContoursXld(ho_ContoursLeft, &ho_SmoothContoursLeft, 9); // 平滑轮廓，防止有太多转折点
-    GenPolygonsXld(ho_SmoothContoursLeft, &ho_PolygonsLeft, "ramer", 2); // 从区域轮廓生成多边形
-    SplitContoursXld(ho_PolygonsLeft, &ho_LineLeft, "polygon", 1, 5); // 拆分多边形至单条线段
-
-    // 处理右侧区域
-    GenContourRegionXld(ho_SelectedRegionsRight, &ho_ContoursRight, "border");
-    SmoothContoursXld(ho_ContoursRight, &ho_SmoothContoursRight, 9);
-    GenPolygonsXld(ho_SmoothContoursRight, &ho_PolygonsRight, "ramer", 2);
-    SplitContoursXld(ho_PolygonsRight, &ho_LineRight, "polygon", 1, 5);
-
-    // 拟合直线
-    FitLineContourXld(ho_LineLeft, "tukey", -1, 0, 5, 2, &hv_RowBeginLeft, &hv_ColBeginLeft,
-        &hv_RowEndLeft, &hv_ColEndLeft, &hv_NrLeft, &hv_NcLeft, &hv_DistLeft);
-    FitLineContourXld(ho_LineRight, "tukey", -1, 0, 5, 2, &hv_RowBeginRight, &hv_ColBeginRight,
-        &hv_RowEndRight, &hv_ColEndRight, &hv_NrRight, &hv_NcRight, &hv_DistRight);
-
-
-    // 定义雷达中心和最短距离
-    hv_x_radar = 500;
-    hv_y_radar = 500;
-    hv_MinDistanceLeft = 0;
-    hv_MinDistanceRight = 0;
-
-       // 初始化距离数组为一个较大的值，以避免空数组（检测不到直线）的情况
-    hv_DistancesLeft = HalconCpp::HTuple(9999);
-    hv_DistancesRight = HalconCpp::HTuple(9999);
-
-    // 计算点到左侧线的距离
-    DistancePl(hv_x_radar, hv_y_radar, hv_RowBeginLeft, hv_ColBeginLeft, hv_RowEndLeft,
-        hv_ColEndLeft, &hv_DistancesLeft);
-
-
-    // 计算点到右侧线的距离
-    DistancePl(hv_x_radar, hv_y_radar, hv_RowBeginRight, hv_ColBeginRight, hv_RowEndRight,
-        hv_ColEndRight, &hv_DistancesRight);
-    // TupleMin(hv_DistancesRight, &hv_MinDistanceRight);
-
-    // 计算最小距离前，移除初始值
-    hv_DistancesLeft = hv_DistancesLeft.TupleRemove(0);
-    hv_DistancesRight = hv_DistancesRight.TupleRemove(0);
-
-    // 确保至少有一个元素后再计算最小值
-    if (hv_DistancesLeft.Length() > 0) {
-        TupleMin(hv_DistancesLeft, &hv_MinDistanceLeft);
+    //对左侧区域进行处理
+    Skeleton(ho_SelectedRegionsLeft, &ho_SkeletonLeft);
+    GenContoursSkeletonXld(ho_SkeletonLeft, &ho_ContoursLeft, 5, "generalize1");
+    //分割线段
+    SegmentContoursXld(ho_ContoursLeft, &ho_ContoursSplitLeft, "lines_circles", 10,
+        4, 2);
+    //筛选角度符合范围的直线 这里用的是弧度
+    SelectShapeXld(ho_ContoursSplitLeft, &ho_FinalSelectedXLDLeft, (HalconCpp::HTuple("rect2_phi").Append("rect2_phi")),
+        "or", (HalconCpp::HTuple(-1.5707964).Append(0.7853982)), (HalconCpp::HTuple(-0.7853982).Append(1.5707964)));
+    CountObj(ho_FinalSelectedXLDLeft, &hv_Number);
+    if (0 != (int(hv_Number < 1)))
+    {
+        return;
     }
-    else {
-        // 没有检测到直线，可以设置为一个特定的错误值或者保持9999
-        hv_MinDistanceLeft = HalconCpp::HTuple(9999);
+    LengthXld(ho_FinalSelectedXLDLeft, &hv_xldLengthLeft);
+    //选择筛选后的最长直线做凸包
+    SelectShapeXld(ho_FinalSelectedXLDLeft, &ho_FinalSelectedXLDLeft, "contlength",
+        "and", hv_xldLengthLeft.TupleMax(), hv_xldLengthLeft.TupleMax());
+    CountObj(ho_FinalSelectedXLDLeft, &hv_XLDNumber);
+
+    GenRegionContourXld(ho_FinalSelectedXLDLeft, &ho_FinalLineRegionLeft, "filled");
+    //计算包围所选区域的最小矩形。此函数返回矩形的中心位置（Row, Column），矩形的旋转角度 PhiLeft（以弧度为单位），以及矩形的两个边长 Length1 和 Length2
+    SmallestRectangle2(ho_FinalLineRegionLeft, &hv_Row, &hv_Column, &hv_PhiLeft, &hv_Length1,
+        &hv_Length2);
+    GenRectangle2(&ho_Rectangle1, hv_Row, hv_Column, hv_PhiLeft, hv_Length1, hv_Length2);
+
+    //计算直线端点坐标
+    //根据矩形的中心点、旋转角度和长度，计算出矩形长边的两个端点坐标。这些坐标将用于生成一条直线。
+    hv_LineRowLeft1 = hv_Row - (hv_Length1 * (hv_PhiLeft.TupleSin()));
+    hv_LineColLeft1 = hv_Column + (hv_Length1 * (hv_PhiLeft.TupleCos()));
+    hv_LineRowLeft2 = hv_Row + (hv_Length1 * (hv_PhiLeft.TupleSin()));
+    hv_LineColLeft2 = hv_Column - (hv_Length1 * (hv_PhiLeft.TupleCos()));
+
+    GenRegionLine(&ho_LineLeft, hv_LineRowLeft1, hv_LineColLeft1, hv_LineRowLeft2,
+        hv_LineColLeft2);
+    TupleDeg(hv_PhiLeft, &hv_DegLeft);
+
+    if (0 != (int(hv_DegLeft >= 90)))
+    {
+        hv_DegLeft = -(hv_DegLeft - 90);
+    }
+    else
+    {
+        hv_DegLeft = 90 - hv_DegLeft;
     }
 
-    if (hv_DistancesRight.Length() > 0) {
-        TupleMin(hv_DistancesRight, &hv_MinDistanceRight);
+
+    //对右侧区域进行处理
+    Skeleton(ho_SelectedRegionsRight, &ho_SkeletonRight);
+    GenContoursSkeletonXld(ho_SkeletonRight, &ho_ContoursRight, 5, "generalize1");
+    //分割线段
+    SegmentContoursXld(ho_ContoursRight, &ho_ContoursSplitRight, "lines_circles", 10,
+        4, 2);
+    //筛选角度符合范围的直线 这里用的是弧度
+    SelectShapeXld(ho_ContoursSplitRight, &ho_FinalSelectedXLDRight, (HalconCpp::HTuple("rect2_phi").Append("rect2_phi")),
+        "or", (HalconCpp::HTuple(-1.5707964).Append(0.7853982)), (HalconCpp::HTuple(-0.7853982).Append(1.5707964)));
+    CountObj(ho_FinalSelectedXLDRight, &hv_Number);
+    if (0 != (int(hv_Number < 1)))
+    {
+        return;
     }
-    else {
-        // 没有检测到直线，可以设置为一个特定的错误值或者保持9999
-        hv_MinDistanceRight = HalconCpp::HTuple(9999);
+    LengthXld(ho_FinalSelectedXLDRight, &hv_xldLengthRight);
+    //选择筛选后的最长直线做凸包
+    SelectShapeXld(ho_FinalSelectedXLDRight, &ho_FinalSelectedXLDRight, "contlength",
+        "and", hv_xldLengthRight.TupleMax(), hv_xldLengthRight.TupleMax());
+    CountObj(ho_FinalSelectedXLDRight, &hv_XLDNumber);
+
+    GenRegionContourXld(ho_FinalSelectedXLDRight, &ho_FinalLineRegionRight, "filled");
+    SmallestRectangle2(ho_FinalLineRegionRight, &hv_Row, &hv_Column, &hv_PhiRight,
+        &hv_Length1, &hv_Length2);
+    GenRectangle2(&ho_Rectangle2, hv_Row, hv_Column, hv_PhiRight, hv_Length1, hv_Length2);
+
+    hv_LineRowRight1 = hv_Row - (hv_Length1 * (hv_PhiRight.TupleSin()));
+    hv_LineColRight1 = hv_Column + (hv_Length1 * (hv_PhiRight.TupleCos()));
+    hv_LineRowRight2 = hv_Row + (hv_Length1 * (hv_PhiRight.TupleSin()));
+    hv_LineColRight2 = hv_Column - (hv_Length1 * (hv_PhiRight.TupleCos()));
+
+    GenRegionLine(&ho_LineRight, hv_LineRowRight1, hv_LineColRight1, hv_LineRowRight2,
+        hv_LineColRight2);
+    TupleDeg(hv_PhiRight, &hv_DegRight);
+
+    //if (0 != (int(hv_DegRight >= 90)))
+    //{
+    //    hv_DegRight = -(hv_DegRight - 90);
+    //}
+    //else
+    //{
+    //    hv_DegRight = 90 - hv_DegRight;
+    //}
+
+    // 调整角度基准，以垂直向上（90度）为0度
+    hv_DegRight = 90 - hv_DegRight;
+
+    // 标准化角度，使其在-90到+90度范围内
+    if (hv_DegRight > 90) {
+        hv_DegRight -= 180;
+    }
+    else if (hv_DegRight < -90) {
+        hv_DegRight += 180;
     }
 
-    Result.distanceLeft = float(hv_MinDistanceLeft * 20);
-    Result.distanceRight = float(hv_MinDistanceRight * 20);
+    //计算两条直线之间的最小和最大距离
+    DistanceSs(hv_LineRowLeft1, hv_LineColLeft1, hv_LineRowLeft2, hv_LineColLeft2,
+        hv_LineRowRight1, hv_LineColRight1, hv_LineRowRight2, hv_LineColRight2, &hv_DistanceMin,
+        &hv_DistanceMax);
 
+    //计算中心点到左侧直线的距离
+    DistancePl(500, 500, hv_LineRowLeft1, hv_LineColLeft1, hv_LineRowLeft2, hv_LineColLeft2,
+        &hv_DistanceCenterToLeft);
+
+    //计算中心点到右侧直线的距离
+    DistancePl(500, 500, hv_LineRowRight1, hv_LineColRight1, hv_LineRowRight2, hv_LineColRight2,
+        &hv_DistanceCenterToRight);
+
+    //将结果存入结构体
+    Result.distanceLeft = hv_DistanceCenterToLeft * 20;
+    Result.distanceRight = hv_DistanceCenterToRight * 20;
+    Result.theta = hv_DegRight;
 }
+
