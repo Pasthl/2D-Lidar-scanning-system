@@ -5,8 +5,8 @@ sl::ILidarDriver* drv = *sl::createLidarDriver();
 
 int main()
 {
-	LidarInfo Result;
 	int scale_num = 20;
+	LidarInfo Result;
 	int window_height = 10000 / scale_num;//图像的长宽定义
 	int window_width = 20000 / scale_num;
 
@@ -26,13 +26,17 @@ int main()
 	int i = 0;
 	while (i < 100)
 	{
-		GetData(drv, Result, window);
-		std::cout << "-------------------------------------------------------------------------------" << std::endl;
-		std::cout << "距离:" << Result.distance << std::endl; //获取结果
-		std::cout << "角度:" << Result.theta << std::endl;
-		std::cout << "距离左侧:" << Result.distanceLeft << std::endl;
-	    std::cout << "距离右侧:" << Result.distanceRight << std::endl;
-		std::cout << "-------------------------------------------------------------------------------" << std::endl;
+		if (GetData(drv, Result, window)) {
+			std::cout << "-------------------------------------------------------------------------------" << std::endl;
+			std::cout << "距离障碍物:" << Result.distance << "mm" << std::endl;  // 获取结果
+			std::cout << "偏转角度:" << Result.theta << "度" << std::endl;
+			std::cout << "距离左侧:" << Result.distanceLeft << "mm" << std::endl;
+			std::cout << "距离右侧:" << Result.distanceRight << "mm" << std::endl;
+			std::cout << "-------------------------------------------------------------------------------" << std::endl;
+		}
+		else {
+			std::cout << "数据获取失败，无法显示结果。" << std::endl;
+		}
 		i++;
 	}
 	LidarStop(drv);

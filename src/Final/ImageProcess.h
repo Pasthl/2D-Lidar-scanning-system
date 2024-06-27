@@ -17,8 +17,8 @@ struct LidarInfo
 };
 // LidarInfo Result;
 
-void GetData(sl::ILidarDriver* drv, LidarInfo& Result, HalconCpp::HWindow& window);
+bool GetData(sl::ILidarDriver* drv, LidarInfo& Result, HalconCpp::HWindow& window);
 
 void DealImage(HalconCpp::HObject  ho_Image, LidarInfo& Result);
 
-void CalDistance(HalconCpp::HObject  ho_Image, LidarInfo& Result);
+bool CalDistance(HalconCpp::HObject  ho_Image, LidarInfo& Result);

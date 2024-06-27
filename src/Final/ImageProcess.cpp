@@ -23,7 +23,7 @@ const int scale_num = 20; //图像缩放系数
 int timesss = 0;
 
 
-void GetData(sl::ILidarDriver* drv, LidarInfo& Result, HalconCpp::HWindow& window) //参数为雷达实例的指针和存储数据实例
+bool GetData(sl::ILidarDriver* drv, LidarInfo& Result, HalconCpp::HWindow& window) //参数为雷达实例的指针和存储数据实例
 {
 
     HalconCpp::HObject  ho_Lidar_image;//halon初始化图像
@@ -54,6 +54,8 @@ void GetData(sl::ILidarDriver* drv, LidarInfo& Result, HalconCpp::HWindow& windo
 
     // 合成三个通道成一个RGB图像
     HalconCpp::Compose3(ho_ImageR, ho_ImageG, ho_ImageB, &ho_Lidar_image);
+
+    bool validLinesFound = true;
 
     sl_lidar_response_measurement_node_hq_t nodes[8192];
     size_t   count = _countof(nodes);
@@ -110,8 +112,10 @@ void GetData(sl::ILidarDriver* drv, LidarInfo& Result, HalconCpp::HWindow& windo
 
     }
     DealImage(ho_Lidar_image, Result);//处理图像信息
-    CalDistance(ho_Lidar_image, Result);
+    validLinesFound = CalDistance(ho_Lidar_image, Result);
     timesss++;
+
+    return validLinesFound;  // 返回 CalDistance 的结果
     //图像重置
     ori_x.clear();
     ori_y.clear();
@@ -201,7 +205,7 @@ void DealImage(HalconCpp::HObject  ho_Image, LidarInfo& Result)
 
 }
 
-void CalDistance(HalconCpp::HObject  ho_Image, LidarInfo& Result)
+bool CalDistance(HalconCpp::HObject  ho_Image, LidarInfo& Result)
 {
     // Local iconic variables
     HalconCpp::HObject  ho_Region, ho_Cross, ho_Rectangle1;
@@ -262,7 +266,8 @@ void CalDistance(HalconCpp::HObject  ho_Image, LidarInfo& Result)
     CountObj(ho_FinalSelectedXLDLeft, &hv_Number);
     if (0 != (int(hv_Number < 1)))
     {
-        return;
+        std::cerr << "No valid lines found in the left region." << std::endl;
+        return false; // 没有找到符合条件的直线，返回错误
     }
     LengthXld(ho_FinalSelectedXLDLeft, &hv_xldLengthLeft);
     //选择筛选后的最长直线做凸包
@@ -309,7 +314,8 @@ void CalDistance(HalconCpp::HObject  ho_Image, LidarInfo& Result)
     CountObj(ho_FinalSelectedXLDRight, &hv_Number);
     if (0 != (int(hv_Number < 1)))
     {
-        return;
+        std::cerr << "No valid lines found in the right region." << std::endl;
+        return false; // 没有找到符合条件的直线，返回错误
     }
     LengthXld(ho_FinalSelectedXLDRight, &hv_xldLengthRight);
     //选择筛选后的最长直线做凸包
@@ -331,14 +337,6 @@ void CalDistance(HalconCpp::HObject  ho_Image, LidarInfo& Result)
         hv_LineColRight2);
     TupleDeg(hv_PhiRight, &hv_DegRight);
 
-    //if (0 != (int(hv_DegRight >= 90)))
-    //{
-    //    hv_DegRight = -(hv_DegRight - 90);
-    //}
-    //else
-    //{
-    //    hv_DegRight = 90 - hv_DegRight;
-    //}
 
     // 调整角度基准，以垂直向上（90度）为0度
     hv_DegRight = 90 - hv_DegRight;
@@ -368,5 +366,7 @@ void CalDistance(HalconCpp::HObject  ho_Image, LidarInfo& Result)
     Result.distanceLeft = hv_DistanceCenterToLeft * 20;
     Result.distanceRight = hv_DistanceCenterToRight * 20;
     Result.theta = hv_DegRight;
+
+    return true;
 }
 
